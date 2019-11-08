@@ -1,4 +1,4 @@
-import {Injectable, NgModule} from '@angular/core';
+import {NgModule} from '@angular/core';
 import {BrowserModule} from '@angular/platform-browser';
 
 import {HttpClientModule, HttpClient} from '@angular/common/http';
@@ -12,7 +12,14 @@ import {APP_BASE_HREF} from '@angular/common';
 
 import {CustomModule} from './custom.module';
 import {AddUserComponent} from './users/add-user.component';
-import {MatGridListModule} from "@angular/material/grid-list";
+import {HomeDialog} from './home/home.component';
+import {MatGridListModule} from '@angular/material/grid-list';
+import {MatSelectModule} from '@angular/material/select';
+import {MatProgressSpinnerModule} from '@angular/material/progress-spinner';
+import {MatProgressBarModule} from '@angular/material';
+
+
+// import {MDCRipple} from '@material/ripple';
 
 // import {ScrollDispatchModule} from '@angular/cdk/scrolling';
 // import {CdkStepperModule} from '@angular/cdk/stepper';
@@ -26,6 +33,10 @@ import {MatGridListModule} from "@angular/material/grid-list";
     Routing,
     CustomModule,
     MatGridListModule,
+    MatSelectModule,
+    MatProgressSpinnerModule,
+    MatProgressBarModule,
+    // MDCRipple,
     // ScrollDispatchModule,
     // CdkStepperModule,
   ],
@@ -33,7 +44,8 @@ import {MatGridListModule} from "@angular/material/grid-list";
     AppComponent,
     HomeComponent,
     UserListComponent,
-    AddUserComponent
+    AddUserComponent,
+    HomeDialog,
   ],
   providers: [
     HttpClient,
@@ -43,6 +55,7 @@ import {MatGridListModule} from "@angular/material/grid-list";
   ],
   entryComponents: [
     AddUserComponent,
+    HomeDialog,
   ],
   bootstrap: [AppComponent]
 })

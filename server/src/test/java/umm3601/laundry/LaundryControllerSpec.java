@@ -13,7 +13,6 @@ import org.bson.types.ObjectId;
 import org.junit.Before;
 import org.junit.Test;
 
-import java.sql.Array;
 import java.util.*;
 import java.util.stream.Collectors;
 
@@ -27,14 +26,16 @@ public class LaundryControllerSpec {
   private String roomId;
 
   private MongoCollection<Document> machinePollingDocuments;
+  private MongoCollection<Document> roomPollingDocuments;
   private BasicDBObject machine;
 
   @Before
   public void clearAndPopulateDB() {
     MongoClient mongoClient = new MongoClient();
     MongoDatabase machineDB = mongoClient.getDatabase("test");
-    MongoDatabase roomDB = mongoClient.getDatabase("test");
     MongoDatabase machinePollingDB = mongoClient.getDatabase("test");
+    MongoDatabase roomDB = mongoClient.getDatabase("test");
+    MongoDatabase roomPollingDB = mongoClient.getDatabase("test");
 
     MongoCollection<Document> machineDocuments = machineDB.getCollection("machines");
     machineDocuments.drop();
@@ -96,8 +97,8 @@ public class LaundryControllerSpec {
       "\t\"name\": \"Gay Hall\"\n" +
       "  }\n"));
     testRooms.add(Document.parse("{\n" +
-      "\t\"id\": \"independence_hall\",\n" +
-      "\t\"name\": \"Independence Hall\"\n" +
+      "\t\"id\": \"to_be_overwritten\",\n" +
+      "\t\"name\": \"TO BE OVERWRITTEN\"\n" +
       "  }\n"));
     roomId = "a_room";
     BasicDBObject room = new BasicDBObject("id", roomId);
@@ -105,10 +106,27 @@ public class LaundryControllerSpec {
     roomDocuments.insertMany(testRooms);
     roomDocuments.insertOne(Document.parse(room.toJson()));
 
+    roomPollingDocuments = roomPollingDB.getCollection("roomDataFromPollingAPI");
+    roomPollingDocuments.drop();
+    List<Document> testPollingRooms = new ArrayList<>();
+    testPollingRooms.add(Document.parse("{\n" +
+      "\t\"id\": \"gay_hall\",\n" +
+      "\t\"name\": \"Gay Hall\"\n" +
+      "  }\n"));
+    testPollingRooms.add(Document.parse("{\n" +
+      "\t\"id\": \"independence_hall\",\n" +
+      "\t\"name\": \"Independence Hall\"\n" +
+      "  }\n"));
+    roomId = "another_room";
+    BasicDBObject anotherRoom = new BasicDBObject("id", roomId);
+    anotherRoom = anotherRoom.append("name", "Pine Hall");
+    roomPollingDocuments.insertMany(testPollingRooms);
+    roomPollingDocuments.insertOne(Document.parse(anotherRoom.toJson()));
+
     // It might be important to construct this _after_ the DB is set up
     // in case there are bits in the constructor that care about the state
     // of the database.
-    laundryController = new LaundryController(machineDB, roomDB, machinePollingDB);
+    laundryController = new LaundryController(machineDB, roomDB, machinePollingDB, roomPollingDB);
 
     machineId = "8761b8c6-2548-43c9-9d31-ce0b84bcd160";
     machine = new BasicDBObject("id", machineId);
@@ -178,7 +196,73 @@ public class LaundryControllerSpec {
   }
 
   @Test
+  public void updateRooms() {
+    roomPollingDocuments.drop();
+    List<Document> testPollingRooms = new ArrayList<>();
+    testPollingRooms.add(Document.parse("{\n" +
+      "\t\"id\": \"thanksgiving_hall\",\n" +
+      "\t\"name\": \"Thanksgiving Hall\"\n" +
+      "  }\n"));
+    testPollingRooms.add(Document.parse("{\n" +
+      "\t\"id\": \"christmas_hall\",\n" +
+      "\t\"name\": \"Christmas Hall\"\n" +
+      "  }\n"));
+    testPollingRooms.add(Document.parse("{\n" +
+      "\t\"id\": \"black_friday_hall\",\n" +
+      "\t\"name\": \"Black Friday Hall\"\n" +
+      "  }\n"));
+    roomId = "new_year_hall";
+    BasicDBObject anotherRoom = new BasicDBObject("id", roomId);
+    anotherRoom = anotherRoom.append("name", "New Year Hall");
+    roomPollingDocuments.insertMany(testPollingRooms);
+    roomPollingDocuments.insertOne(Document.parse(anotherRoom.toJson()));
+
+    laundryController.updateRooms();
+    String jsonResult = laundryController.getRooms();
+    BsonArray docs = parseJsonArray(jsonResult);
+
+    assertEquals("Should be 4 rooms", 4, docs.size());
+    List<String> names = docs
+      .stream()
+      .map(LaundryControllerSpec::getName)
+      .sorted()
+      .collect(Collectors.toList());
+    List<String> expectedNames = Arrays.asList("Black Friday Hall", "Christmas Hall", "New Year Hall", "Thanksgiving Hall");
+    assertEquals("Names should match", expectedNames, names);
+  }
+
+  @Test
   public void getAllMachines() {
+    String jsonResult = laundryController.getMachines();
+    BsonArray docs = parseJsonArray(jsonResult);
+
+    assertEquals("Should be updated with 4 machines", 4, docs.size());
+    List<String> types = docs
+      .stream()
+      .map(LaundryControllerSpec::getType)
+      .sorted()
+      .collect(Collectors.toList());
+    List<String> expectedTypes = Arrays.asList("dryer", "dryer", "washer", "washer");
+    assertEquals("Types should match", expectedTypes, types);
+    List<String> status = docs
+      .stream()
+      .map(LaundryControllerSpec::getStatus)
+      .sorted()
+      .collect(Collectors.toList());
+    List<String> expectedStatus = Arrays.asList("normal", "normal", "normal", "normal");
+    assertEquals("Status should be updated", expectedStatus, status);
+    List<Boolean> running = docs
+      .stream()
+      .map(LaundryControllerSpec::getRunning)
+      .sorted()
+      .collect(Collectors.toList());
+    List<Boolean> expectedRunning = Arrays.asList(false, false, true, true);
+    assertEquals("Running should be updated", expectedRunning, running);
+  }
+
+  @Test
+  public void updateMachines() {
+    laundryController.updateMachines();
     String jsonResult = laundryController.getMachines();
     BsonArray docs = parseJsonArray(jsonResult);
 
@@ -207,7 +291,8 @@ public class LaundryControllerSpec {
   }
 
   @Test
-  public void updateTime() {
+  public void updateMachinesTime() {
+    laundryController.updateMachines();
     String jsonResult = laundryController.getMachines();
     BsonArray docs = parseJsonArray(jsonResult);
 
@@ -215,7 +300,7 @@ public class LaundryControllerSpec {
       .stream()
       .map(LaundryControllerSpec::getRemainingTime)
       .collect(Collectors.toList());
-    List<Integer> expectedRemainingTimes = Arrays.asList(60, -1, 60, -1, -1);
+    List<Integer> expectedRemainingTimes = Arrays.asList(35, -1, 60, -1, -1);
     assertEquals("Running should be updated", expectedRemainingTimes, remainingTimes);
 
     List<Integer> vacantTimes = docs
@@ -232,27 +317,11 @@ public class LaundryControllerSpec {
       .append("status", "the_status")
       .append("room_id", roomId);
     machinePollingDocuments.replaceOne(Document.parse(machine.toJson()), Document.parse(newMachine.toJson()));
-
-    jsonResult = laundryController.getMachines();
-    docs = parseJsonArray(jsonResult);
-
-    remainingTimes = docs
-      .stream()
-      .map(LaundryControllerSpec::getRemainingTime)
-      .collect(Collectors.toList());
-    expectedRemainingTimes = Arrays.asList(60, -1, 60, -1, 60);
-    assertEquals("Running should be updated", expectedRemainingTimes, remainingTimes);
-
-    vacantTimes = docs
-      .stream()
-      .map(LaundryControllerSpec::getVacantTime)
-      .collect(Collectors.toList());
-    expectedVacantTimes = Arrays.asList(-1, 0, -1, 0, -1);
-    assertEquals("Running should be updated", expectedVacantTimes, vacantTimes);
   }
 
   @Test
   public void getAllMachinesAtGayHall() {
+    laundryController.updateMachines();
     String jsonResult = laundryController.getMachinesAtRoom("gay_hall");
     BsonArray docs = parseJsonArray(jsonResult);
 
@@ -268,6 +337,7 @@ public class LaundryControllerSpec {
 
   @Test
   public void getMachineById() {
+    laundryController.updateMachines();
     String jsonResult = laundryController.getMachine(machineId);
     Document machine = Document.parse(jsonResult);
     assertEquals("Status should match", "the_status", machine.get("status"));

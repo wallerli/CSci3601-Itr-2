@@ -15,40 +15,46 @@ public class LaundryController {
   private final MongoCollection<Document> roomCollection;
   private MongoCollection<Document> machineCollection;
 
-  private  MongoCollection<Document> machinePollingCollection;
-  private MongoDatabase pullingDatabase;
+  private MongoCollection<Document> machinePollingCollection;
+  private MongoCollection<Document> roomPollingCollection;
+  private MongoDatabase machinePullingDatabase;
+  private MongoDatabase roomPullingDatabase;
 
   /*
    * This is a switch for the E2E test
    * before running the tests
-   * set seedlocalSourse to be true,
+   * set seedLocalSource to be true,
    * after testing, set the boolean
    * back to true in order to make
-   * the functionailty works.
+   * the functionality works.
    */
-  private boolean seedLocalSourse = false;
+  private boolean seedLocalSource = false;
 
-  public LaundryController(MongoDatabase machineDatabase, MongoDatabase roomDatabase, MongoDatabase machinePollingDatabase)  {
-    this.pullingDatabase = machinePollingDatabase;
+  public LaundryController(MongoDatabase machineDatabase, MongoDatabase roomDatabase, MongoDatabase machinePollingDatabase, MongoDatabase roomPollingDatabase) {
+    this.machinePullingDatabase = machinePollingDatabase;
+    this.roomPullingDatabase = roomPollingDatabase;
     machineCollection = machineDatabase.getCollection("machines");
     roomCollection = roomDatabase.getCollection("rooms");
-    if (!seedLocalSourse){
+    if (!seedLocalSource) {
       machinePollingCollection = machinePollingDatabase.getCollection("machineDataFromPollingAPI");
+      roomPollingCollection = machinePollingDatabase.getCollection("roomDataFromPollingAPI");
     } else {
       machinePollingCollection = machineDatabase.getCollection("machines");
+      roomPollingCollection = machineDatabase.getCollection("rooms");
     }
+    this.updateRooms();
     this.updateMachines();
   }
 
-  public String getRooms() { return serializeIterable(roomCollection.find()); }
+  public String getRooms() {
+    return serializeIterable(roomCollection.find());
+  }
 
   public String getMachines() {
-    this.updateMachines();
     return serializeIterable(machineCollection.find());
   }
 
   public String getMachinesAtRoom(String room) {
-    this.updateMachines();
     Document filterDoc = new Document();
     filterDoc = filterDoc.append("room_id", room);
     return serializeIterable(machineCollection.find(filterDoc));
@@ -61,7 +67,6 @@ public class LaundryController {
   }
 
   public String getMachine(String id) {
-    this.updateMachines();
     FindIterable<Document> jsonMachines
       = machineCollection.find(eq("id", id));
 
@@ -75,55 +80,99 @@ public class LaundryController {
     }
   }
 
-  private void updateMachines() {
+  public void updateMachines() {
 
-    if (!seedLocalSourse){
-      machinePollingCollection = pullingDatabase.getCollection("machineDataFromPollingAPI");
+    if (!seedLocalSource) {
+      machinePollingCollection = machinePullingDatabase.getCollection("machineDataFromPollingAPI");
     } else {
-      machinePollingCollection = pullingDatabase.getCollection("machines");
+      machinePollingCollection = machinePullingDatabase.getCollection("machines");
     }
 
     long currentTime = System.currentTimeMillis();
 
-    FindIterable<Document> jsonMachines = machinePollingCollection.find();
+    FindIterable<Document> newMachines = machinePollingCollection.find();
 
-    for (Document document : jsonMachines) {
-      Document oldDocument = document;
-      FindIterable<Document> documentsOld = machineCollection.find();
-      for (Document d : documentsOld) {
-        if (d.get("id").equals(document.get("id"))) {
-          oldDocument = d;
+    for (Document newDocument : newMachines) {
+      Document oldDocument = new Document(newDocument);
+      FindIterable<Document> oldDocuments = machineCollection.find();
+      for (Document d : oldDocuments) {
+        if (d.get("id").equals(newDocument.get("id"))) {
+          oldDocument = new Document(d);
           break;
         }
       }
+      Document originalNewDocument = new Document(newDocument);
 
-      Document origin = new Document(document);
-      if (document.getBoolean("running")) {
-        if (oldDocument.get("running") == null || !oldDocument.getBoolean("running")
-          || document.get("remainingTime") == null || document.get("runBegin") == null) {
-          document.put("runBegin", currentTime);
-          document.put("remainingTime", 60);
-          document.put("runEnd", -1);
-          document.put("vacantTime", -1);
+      if (newDocument.getBoolean("running")) {
+        if (newDocument.get("type").equals("dryer")) {
+          if (!oldDocument.getBoolean("running") || oldDocument.get("runBegin") == null) {
+            newDocument.put("runBegin", currentTime);
+            newDocument.put("remainingTime", 60);
+            newDocument.put("runEnd", -1);
+            newDocument.put("vacantTime", -1);
+          } else {
+            newDocument.put("runBegin", oldDocument.get("runBegin"));
+            newDocument.put("remainingTime", Math.max(0, 60 - (int) ((currentTime - oldDocument.getLong("runBegin")) / 60000)));
+            newDocument.put("runEnd", -1);
+            newDocument.put("vacantTime", -1);
+          }
         } else {
-          document.put("remainingTime", Math.max(0, 60 - (int) ((currentTime - document.getLong("runBegin")) / 60000)));
-          document.put("runEnd", -1);
-          document.put("vacantTime", -1);
+          if (!oldDocument.getBoolean("running") || oldDocument.get("runBegin") == null) {
+            newDocument.put("runBegin", currentTime);
+            newDocument.put("remainingTime", 35);
+            newDocument.put("runEnd", -1);
+            newDocument.put("vacantTime", -1);
+          } else {
+            newDocument.put("runBegin", oldDocument.get("runBegin"));
+            newDocument.put("remainingTime", Math.max(0, 35 - (int) ((currentTime - oldDocument.getLong("runBegin")) / 60000)));
+            newDocument.put("runEnd", -1);
+            newDocument.put("vacantTime", -1);
+          }
         }
       } else {
-        if (oldDocument.get("running") == null || oldDocument.getBoolean("running") || document.get("runEnd") == null) {
-          document.put("runEnd", currentTime);
-          document.put("vacantTime", 0);
-          document.put("runBegin", -1);
-          document.put("remainingTime", -1);
+        if (oldDocument.getBoolean("running") || oldDocument.get("runEnd") == null) {
+          newDocument.put("runEnd", currentTime);
+          newDocument.put("vacantTime", 0);
+          newDocument.put("runBegin", -1);
+          newDocument.put("remainingTime", -1);
         } else {
-          document.put("vacantTime", (int) ((currentTime - document.getLong("runEnd")) / 60000));
-          document.put("runBegin", -1);
-          document.put("remainingTime", -1);
+          newDocument.put("runEnd", oldDocument.get("runEnd"));
+          newDocument.put("vacantTime", (int) ((currentTime - oldDocument.getLong("runEnd")) / 60000));
+          newDocument.put("runBegin", -1);
+          newDocument.put("remainingTime", -1);
         }
       }
-      machinePollingCollection.replaceOne(origin, document);
+      machinePollingCollection.replaceOne(originalNewDocument, newDocument);
     }
-    machineCollection = machinePollingCollection;
+
+    if (!seedLocalSource) {
+      machineCollection.drop();
+      int n = 0;
+      for (Document d : newMachines) {
+        machineCollection.insertOne(d);
+        ++n;
+      }
+      System.out.println("[update] INFO laundry.LaundryController - Updated machines collection with " + n + " machines");
+    } else {
+      System.out.println("[update] INFO laundry.LaundryController - Updated machines collection with " + machineCollection.count() + " machines");
+    }
+ }
+
+  public void updateRooms() {
+
+    if (!seedLocalSource) {
+      roomPollingCollection = roomPullingDatabase.getCollection("roomDataFromPollingAPI");
+
+      FindIterable<Document> newRooms = roomPollingCollection.find();
+      roomCollection.drop();
+      int n = 0;
+      for (Document d : newRooms) {
+        roomCollection.insertOne(d);
+        ++n;
+      }
+      System.out.println("[update] INFO laundry.LaundryController - Updated rooms collection with " + n + " rooms");
+    } else {
+      System.out.println("[update] INFO laundry.LaundryController - Skipped updating rooms collection");
+    }
   }
 }

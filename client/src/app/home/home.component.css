@@ -2,6 +2,10 @@
   margin-top: 10px;
 }
 
+.home {
+  scroll-behavior: smooth;
+}
+
 .mat-expansion-panel-header-description {
   margin-right: 0;
 }
@@ -13,13 +17,28 @@
   left: 0;
 }
 
-.room.mat-card {
-  margin:0;
-  box-shadow: unset;
+#all-rooms {
+  height: 40px;
+  top: auto;
+  right: 15px;
+  bottom: -50px;
+  left: auto;
+  position: fixed;
+  border-radius: 20px;
+  z-index: 1;
+  transition: bottom 1s;
 }
 
-.machines.mat-expansion-panel {
-  margin-top: 10px;
-  margin-bottom: 10px;
-  box-shadow: unset;
+.mat-expansion-panel, .mat-card {
+  border-radius: 20px;
+}
+
+@media screen and (min-width: 720px) {
+  #all-rooms {
+    font-size: 110%;
+    height: 50px;
+    border-radius: 25px;
+    right: 40px;
+    bottom: 25px;
+  }
 }
